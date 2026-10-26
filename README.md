@@ -2,6 +2,8 @@
 
 A target plate plugin for the AC:Unreal client. Add the names of the bosses you hunt, and when one is nearby the client draws a plate on it with its name, level, health and your debuffs. Plate details come from the client's target data, which it refreshes in the background without changing your selection.
 
+<img width="1317" height="1370" alt="ACUnreal Screenshot 2026 10 26 - 15 18 58 46" src="https://github.com/user-attachments/assets/9f66389f-d817-41d6-94ce-0fec3945617d" />
+
 ## Features
 
 - Plates on up to 4 nearby bosses, nearest first, without selecting them.
