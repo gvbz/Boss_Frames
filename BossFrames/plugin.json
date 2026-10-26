@@ -1,0 +1,14 @@
+{
+  "api": 2,
+  "mode": "companion",
+  "id": "boss_frames",
+  "name": "Boss Frames",
+  "short_name": "BF",
+  "version": "1.1.1",
+  "description": "Target plates on the bosses you name: when one is near, it is listed with a Select button and the client draws a plate on it with its name, level, health and your debuffs.",
+  "presentation": {"title": "Boss Frames", "icon": "bf.png", "controls": "none", "settings": false, "status": false},
+  "update_interval": 0.5,
+  "snapshot_fields": ["objects", "selection", "tracked_targets", "target_effects"],
+  "permissions": ["ui", "markers", "state"],
+  "settings": []
+}
