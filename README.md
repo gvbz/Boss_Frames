@@ -1,6 +1,6 @@
 # Boss Frames
 
-A target plate plugin for the AC:Unreal client. Add the names of the bosses you hunt, and when one is nearby the client draws a plate on it with its name, level, health and your debuffs. Plate details come from the client's target data, which it refreshes in the background without changing your selection.
+A target plate plugin for the AC:Unreal client. Add the names of the mobs you want plates on, and when one is nearby the client draws a plate with its name, level, health and your debuffs. Plate details come from the client's target data, which it refreshes in the background without changing your selection.
 
 <img width="1124" height="815" alt="Desktop Screenshot 2026 11 05 - 19 13 24 63" src="https://github.com/user-attachments/assets/4ce32cc4-2bb5-4ddc-9f3a-88b8abd23278" />
 
@@ -31,7 +31,7 @@ A target plate plugin for the AC:Unreal client. Add the names of the bosses you 
 
 Replace the files in `Installed\BossFrames` with the new download and press **Refresh** in Manage Plugins. Your boss list and settings are saved outside this folder, so they are retained.
 
-## Good to know
+## Info
 
 - Names match exactly, ignoring letter case.
 - Health on your selected target updates immediately. On other bosses it shows as a percentage and refreshes every few seconds.
