@@ -1,10 +1,10 @@
--- Boss Frames 1.1.1: target plates on the monsters you name (AC:Unreal API 2
--- companion, client build 137 or newer; plate opacity needs 138).
+-- Boss Frames 1.2.0: target plates on the monsters you name (AC:Unreal API 2
+-- companion, client v146 or newer).
 --
--- You enter boss names; when one is near (the client's nearby-object list,
--- 240 m), it is listed under Nearby with a Select button, and the client draws
--- a target plate on it: brackets around the monster and a heading with its
--- name. Boss names are unique, so a name is matched exactly (not case-sensitive).
+-- You enter boss names; when one is near (the client's nearby-object list, up
+-- to 240 m) the client draws a target plate on it: brackets around the monster
+-- and a heading with its name. Boss names are unique, so a name is matched
+-- exactly (not case-sensitive).
 --
 -- What a plate can show depends on what the client knows about that monster.
 -- The client assesses plate targets in the background (one assessment per
@@ -13,30 +13,41 @@
 --   - health: live on your selected target; on others, a percentage refreshed
 --     every few seconds (exact numbers right after an assessment)
 --   - level and title: after the first assessment
---   - debuff icons: your own confirmed casts, with estimated timers
+--   - debuff icons: your own confirmed casts (debuffs and damage over time),
+--     with estimated timers
 -- The plugin passes what is known. At most 4 plates per plugin (16 in total).
 --
+-- Window: "Show boss frames" (on/off: plates, minimap diamonds and alerts),
+-- the Add row (name box, Add, Add selected), your boss list with Remove, and
 -- Settings: plate color, plate and background opacity, health/stamina/mana
 -- bars, your debuffs, level, the role line (title, creature type or none),
--- plates only on your selected target, and the detection range.
+-- plates only on your selected target, the detection range, and two options
+-- (off by default):
+--   - Alert in chat when a boss is in range: one local line in the plate color,
+--     "[Boss Frames] Elder Chaos Dragon is in range (85 m)", once per boss; not
+--     again if it steps out and back within 60 s; a respawned boss (a new
+--     object) alerts again. Only you see it; nothing is sent.
+--   - Show bosses on the minimap: a diamond in the plate color on the minimap
+--     for each boss in range (up to 16).
 --
--- 1.1.0 (client 138): background assessments fill in plates on bosses you have
--- not selected; plate and background opacity; "Add selected"; only creatures
--- are checked (object_type).
--- 1.1.1: back to a callback every 0.5 s (1 s felt slow to respond).
+-- 1.2.0: the on/off toggle, the chat alert and minimap diamonds; no Nearby
+-- list (the plates show the bosses); the Add box shows "Monster name" inside it,
+-- so the buttons line up with it; the status line shows a client error.
 --
 -- Lightweight: plugin.json asks only for nearby objects and target data
 -- ("snapshot_fields"); only creatures are checked, each name once (cached by
--- id); the
--- window and the plates are sent only when they change. The boss list and
--- settings are saved per character.
+-- id); the window, plates and markers are sent only when they change. The boss
+-- list and settings are saved per character.
 
 local SIZE = 15          -- 20 px, drawn sharp (the game's basefont20)
 local SMALL = 12
 local COLORS = {"red", "yellow", "blue", "green", "white", "purple"}
 local ROLES = {"Title", "Creature type", "None"}
 local OPT_DEFAULT = {color = "red", vitals = true, effects = true, level = true, role = "Title", sel_only = false, range = 240,
-  opacity = 100, back = 75}
+  opacity = 100, back = 75, on = true, alert = false, map = false}
+-- Chat colors: the plate colors (chat has no "purple" name, so its hex).
+local CHAT_COLOR = {red = "red", yellow = "yellow", blue = "blue", green = "green", white = "white", purple = "#CC4DFF"}
+local ALERT_GAP = 60          -- s out of range before the same boss alerts again
 
 local st                      -- {bosses = {names}, opt = {...}} saved per character
 local dirty = false
@@ -47,7 +58,9 @@ local match = {}              -- object id -> boss name (or false); names checke
 local match_n = 0
 local draft = ""              -- the Add box
 local show_settings = false
-local ui_key, plate_key = nil, nil
+local ui_key, plate_key, marker_key = nil, nil, nil
+local seen = {}               -- object id -> last time it was in range (alerts)
+local alerts = {}             -- alert lines waiting to be shown
 
 local function trim(s)
   local a, b = 1, #s
@@ -72,22 +85,17 @@ local function addable(s)
 end
 
 -- Window -----------------------------------------------------------------------
-local function build(found, sel_name)
+local function build(sel_name)
   local ui = {}
-  -- Add a boss by name.
+  -- On/off for everything the plugin draws or says.
+  ui[#ui + 1] = {id = "opt|on", type = "checkbox", size = SIZE, text = "Show boss frames", value = opt("on") ~= false, wrap = false,
+    tooltip = "Plates on your bosses, minimap diamonds and alerts"}
+  -- Add a boss by name (the hint sits in the box, so the buttons line up with it).
   ui[#ui + 1] = {id = "add", type = "row", children = {
-    {id = "name", type = "input", size = SIZE, text = "Monster name", value = draft},
+    {id = "name", type = "input", size = SIZE, placeholder = "Monster name", value = draft},
     {id = "addb", type = "button", size = SIZE, text = "Add", auto_width = true},
     {id = "adds", type = "button", size = SIZE, text = "Add selected", auto_width = true, enabled = sel_name ~= nil,
       tooltip = sel_name or "Select a monster"}}}
-  -- Bosses near you, each with a Select button (handled by the client itself).
-  ui[#ui + 1] = {id = "nh", type = "text", size = SIZE, text = "Nearby", bold = true}
-  for _, f in ipairs(found) do
-    ui[#ui + 1] = {id = "n|" .. f.key, type = "row", children = {
-      {id = "nt|" .. f.key, type = "text", size = SIZE, text = f.name, wrap = false, tooltip = f.name},
-      {id = "ns|" .. f.key, type = "button", size = SIZE, text = "Select", auto_width = true, action = "select", target = f.id}}}
-  end
-  if #found == 0 then ui[#ui + 1] = {id = "none", type = "text", size = SMALL, text = "None nearby", wrap = false} end
   -- Your boss list.
   ui[#ui + 1] = {id = "bh", type = "text", size = SIZE, text = "Bosses", bold = true}
   for i, n in ipairs(st.bosses) do
@@ -111,6 +119,10 @@ local function build(found, sel_name)
     ui[#ui + 1] = {id = "opt|role", type = "select", size = SIZE, text = "Role line", value = opt("role"), options = ROLES}
     ui[#ui + 1] = {id = "opt|sel_only", type = "checkbox", size = SIZE, text = "Only on my selected target", value = opt("sel_only")}
     ui[#ui + 1] = {id = "opt|range", type = "slider", size = SIZE, text = "Range (m)", min = 20, max = 240, step = 10, value = tonumber(opt("range")) or 240}
+    ui[#ui + 1] = {id = "opt|alert", type = "checkbox", size = SIZE, text = "Alert in chat when a boss is in range", value = opt("alert"),
+      tooltip = "One line in chat, in the plate color, when a boss comes within range"}
+    ui[#ui + 1] = {id = "opt|map", type = "checkbox", size = SIZE, text = "Show bosses on the minimap", value = opt("map"),
+      tooltip = "A diamond in the plate color on the minimap for each boss in range"}
   end
   return ui
 end
@@ -195,7 +207,8 @@ return function(s, p)
 
   -- Nearby bosses (objects arrive nearest first); only creatures, each name checked once.
   local found = {}
-  if next(want) then
+  local now = tonumber(s.time) or 0
+  if next(want) and opt("on") ~= false then
     local range = tonumber(opt("range")) or 240
     for _, o in ipairs(s.objects or {}) do
       local d = o.distance or 1e9
@@ -208,28 +221,56 @@ return function(s, p)
         match[o.id] = m; match_n = match_n + 1
       end
       if m and not o.dead and not o.corpse then
-        found[#found + 1] = {id = o.id, key = idkey(o.id), name = m}
-        if #found == 4 then break end
+        found[#found + 1] = {id = o.id, key = idkey(o.id), name = m, d = d}
+        if #found == 16 then break end
       end
     end
   end
 
   -- Window: only when what it shows changes.
-  local keys = {}
-  for _, f in ipairs(found) do keys[#keys + 1] = f.key end
-  local k = table.concat(keys, ",") .. "#" .. table.concat(st.bosses, "|") .. "#" .. draft .. "#" .. tostring(show_settings)
+  local k = table.concat(st.bosses, "|") .. "#" .. draft .. "#" .. tostring(show_settings) .. "#" .. tostring(opt("on")) .. tostring(opt("alert")) .. tostring(opt("map"))
     .. "#" .. tostring(opt("color")) .. tostring(opt("vitals")) .. tostring(opt("effects")) .. tostring(opt("level"))
     .. tostring(opt("role")) .. tostring(opt("sel_only")) .. tostring(opt("range")) .. "|" .. tostring(opt("opacity")) .. "|" .. tostring(opt("back"))
   local sel_name = addable(s)
   k = k .. "#" .. tostring(sel_name)
   if k ~= ui_key then
     if not ui_key then out.status = "" end
-    out.ui = build(found, sel_name); ui_key = k
+    out.ui = build(sel_name); ui_key = k
   end
 
-  -- Plates: only when they change.
+  -- Alerts: a boss that comes into range (a new object, or back after more than
+  -- ALERT_GAP seconds away) gets one line in chat.
+  for _, f in ipairs(found) do
+    local last = seen[f.key]
+    if opt("alert") and (not last or now - last > ALERT_GAP) and #alerts < 16 then
+      alerts[#alerts + 1] = f.name .. " is in range (" .. math.floor(f.d + 0.5) .. " m)"
+    end
+    seen[f.key] = now
+  end
+  if #alerts > 0 then
+    out.requests = {}
+    while #alerts > 0 and #out.requests < 4 do
+      out.requests[#out.requests + 1] = {id = "alert" .. #out.requests, service = "notice", operation = "show",
+        text = table.remove(alerts, 1), color = CHAT_COLOR[opt("color")] or "red"}
+    end
+  end
+  if next(seen) and now - (seen.__swept or 0) > 120 then
+    for key, at in pairs(seen) do if key ~= "__swept" and now - at > 600 then seen[key] = nil end end
+    seen.__swept = now
+  end
+
+  -- Minimap diamonds: only when they change.
+  local markers = {}
+  if opt("map") then
+    for _, f in ipairs(found) do markers[#markers + 1] = {id = f.id, shape = "diamond", color = opt("color"), world = false, map = true} end
+  end
+  local mk = opt("color") .. "#"
+  for _, m in ipairs(markers) do mk = mk .. idkey(m.id) .. "," end
+  if mk ~= marker_key then out.markers = markers; marker_key = mk end
+
+  -- Plates (the nearest 4): only when they change.
   local plates = {}
-  for _, f in ipairs(found) do plates[#plates + 1] = plate_for(f, s) end
+  for i = 1, math.min(4, #found) do plates[#plates + 1] = plate_for(found[i], s) end
   local pk = plates_key(plates, tonumber(s.time) or 0)
   if pk ~= plate_key then out.world_plates = plates; plate_key = pk end
 

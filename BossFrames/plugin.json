@@ -4,11 +4,26 @@
   "id": "boss_frames",
   "name": "Boss Frames",
   "short_name": "BF",
-  "version": "1.1.1",
-  "description": "Target plates on the bosses you name: when one is near, it is listed with a Select button and the client draws a plate on it with its name, level, health and your debuffs.",
-  "presentation": {"title": "Boss Frames", "icon": "bf.png", "controls": "none", "settings": false, "status": false},
+  "version": "1.2.0",
+  "description": "Target plates on the bosses you name: when one is near, the client draws a plate on it with its name, level, health and your debuffs. Optional chat alert and minimap diamonds.",
+  "presentation": {
+    "title": "Boss Frames",
+    "icon": "bf.png",
+    "controls": "none",
+    "settings": false,
+    "status": true
+  },
   "update_interval": 0.5,
-  "snapshot_fields": ["objects", "selection", "tracked_targets", "target_effects"],
-  "permissions": ["ui", "markers", "state"],
+  "snapshot_fields": [
+    "objects",
+    "selection",
+    "tracked_targets",
+    "target_effects"
+  ],
+  "permissions": [
+    "ui",
+    "markers",
+    "state"
+  ],
   "settings": []
 }
